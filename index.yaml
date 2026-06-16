@@ -4,8 +4,30 @@ entries:
   - annotations:
       app-template.uhn.io/dhp-source: external-example/generic-dhp-application-helm
       app-template.uhn.io/source: external-example/helm-charts/charts/other/app-template
+      artifacthub.io/changes: |-
+        - kind: fixed
+          description: Reference existing vault-auth ServiceAccount instead of creating it.
     apiVersion: v2
-    created: "2026-06-16T14:16:13.422179572Z"
+    created: "2026-06-16T15:14:45.781662058Z"
+    dependencies:
+    - name: common
+      repository: https://bjw-s-labs.github.io/helm-charts
+      version: 5.0.1
+    description: App-template based Helm chart for Cardiac UHN applications
+    digest: 51bbc0c8deb33fcc22de46f09ee1f96d54d5d5ad04ff2b83033f7b049ecc2fba
+    kubeVersion: '>=1.28.0-0'
+    name: cardiac-uhn
+    sources:
+    - https://github.com/bjw-s-labs/helm-charts
+    type: application
+    urls:
+    - https://uhn.github.io/helm-chart/other/cardiac-uhn-0.1.1.tgz
+    version: 0.1.1
+  - annotations:
+      app-template.uhn.io/dhp-source: external-example/generic-dhp-application-helm
+      app-template.uhn.io/source: external-example/helm-charts/charts/other/app-template
+    apiVersion: v2
+    created: "2026-06-16T15:14:45.774527714Z"
     dependencies:
     - name: common
       repository: https://bjw-s-labs.github.io/helm-charts
@@ -20,4 +42,4 @@ entries:
     urls:
     - https://uhn.github.io/helm-chart/other/cardiac-uhn-0.1.0.tgz
     version: 0.1.0
-generated: "2026-06-16T14:16:13.415636817Z"
+generated: "2026-06-16T15:14:45.767701806Z"
