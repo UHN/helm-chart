@@ -3,7 +3,7 @@ apiVersion: v2
 name: cardiac-uhn
 description: App-template based Helm chart for Cardiac UHN applications
 type: application
-version: 0.1.0
+version: 0.1.1
 kubeVersion: ">=1.28.0-0"
 dependencies:
   - name: common
@@ -14,3 +14,6 @@ sources:
 annotations:
   app-template.uhn.io/source: external-example/helm-charts/charts/other/app-template
   app-template.uhn.io/dhp-source: external-example/generic-dhp-application-helm
+  artifacthub.io/changes: |-
+    - kind: fixed
+      description: Reference existing vault-auth ServiceAccount instead of creating it.

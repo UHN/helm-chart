@@ -3,6 +3,7 @@
 
 global:
   nameOverride: cardiac-uhn
+  createDefaultServiceAccount: false
 
 defaultPodOptions:
   automountServiceAccountToken: true
@@ -10,16 +11,12 @@ defaultPodOptions:
   imagePullSecrets:
     - name: github-uhn-registry
 
-serviceAccount:
-  vault-auth:
-    forceRename: vault-auth
-
 controllers:
   main:
     type: deployment
     replicas: 1
     serviceAccount:
-      identifier: vault-auth
+      name: vault-auth
     annotations:
       reloader.stakater.com/auto: "true"
     initContainers:
