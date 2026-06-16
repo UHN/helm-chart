@@ -1,0 +1,52 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: [
+    "config:recommended",
+    ":dependencyDashboard",
+  ],
+  labels: [
+    "dependencies",
+  ],
+  customManagers: [
+    {
+      customType: "regex",
+      description: "Process common lib JSON schema references",
+      fileMatch: [
+        "\\.json$",
+      ],
+      matchStrings: [
+        "https:\\/\\/raw.githubusercontent.com\\/bjw-s-labs\\/helm-charts\\/(?<depName>\\S+?)-(?<currentValue>[\\d\\.]+?)\\/\\S+",
+      ],
+      datasourceTemplate: "helm",
+      versioningTemplate: "semver",
+      registryUrlTemplate: "https://bjw-s-labs.github.io/helm-charts",
+    },
+  ],
+  packageRules: [
+    {
+      description: "Group Helm chart dependency updates",
+      matchManagers: [
+        "helmv3",
+      ],
+      groupName: "helm chart dependencies",
+    },
+    {
+      description: "Group GitHub Actions updates",
+      matchManagers: [
+        "github-actions",
+      ],
+      groupName: "github-actions",
+    },
+    {
+      description: "Keep HashiCorp runtime images together",
+      matchDatasources: [
+        "docker",
+      ],
+      matchPackageNames: [
+        "hashicorp/vault",
+        "hashicorp/consul-template",
+      ],
+      groupName: "hashicorp runtime images",
+    },
+  ],
+}

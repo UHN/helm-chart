@@ -1,5 +1,6 @@
 .cr-release-packages/
 .cr-index/
 dist/
+charts/**/charts/*.tgz
 *.tmp
 .DS_Store

@@ -1,8 +1,9 @@
+---
 name: "Charts: Release"
 
 concurrency: helm-release
 
-on:
+"on":
   workflow_dispatch:
   push:
     branches:

@@ -1,0 +1,63 @@
+---
+name: "Pull Request: Validate"
+
+"on":
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+      - synchronize
+    paths:
+      - "charts/**"
+      - ".ci/**"
+      - ".github/workflows/pr-validate.yml"
+      - ".yamllint.yml"
+
+concurrency:
+  group: ${{ github.head_ref }}-pr-validate
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate chart
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install Python tools
+        run: |
+          python -m venv "${RUNNER_TEMP}/validate-venv"
+          "${RUNNER_TEMP}/validate-venv/bin/pip" install yamllint yamale
+          echo "${RUNNER_TEMP}/validate-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Lint YAML
+        run: yamllint .
+
+      - name: Validate chart metadata schema
+        run: yamale -s .ci/ct/chart_schema.yaml charts/other/cardiac-uhn/Chart.yaml
+
+      - name: Build chart dependencies
+        run: helm dependency build charts/other/cardiac-uhn
+
+      - name: Lint chart
+        run: helm lint charts/other/cardiac-uhn
+
+      - name: Render chart
+        run: helm template cardiac-uhn charts/other/cardiac-uhn --namespace cardiac-dev
+
+      - name: Package chart
+        run: |
+          mkdir -p "${RUNNER_TEMP}/chart-package/other"
+          helm package charts/other/cardiac-uhn \
+            --dependency-update \
+            --destination "${RUNNER_TEMP}/chart-package/other"
+          helm repo index "${RUNNER_TEMP}/chart-package" \
+            --url https://uhn.github.io/helm-chart/

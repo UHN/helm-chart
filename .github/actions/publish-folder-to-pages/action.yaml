@@ -1,3 +1,4 @@
+---
 name: "Publish folder to GitHub Pages"
 description: "Publish the contents of a folder to GitHub Pages"
 inputs:
