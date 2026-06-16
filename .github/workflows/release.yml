@@ -1,20 +1,33 @@
-name: Release Charts
+name: "Charts: Release"
+
+concurrency: helm-release
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
+    paths:
+      - "charts/**"
+      - ".github/workflows/release.yml"
+      - ".github/actions/publish-folder-to-pages/action.yaml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    name: Release chart
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+      contents: write
     steps:
-      - name: Checkout
+      - name: Checkout source branch
         uses: actions/checkout@v4
         with:
+          path: src
           fetch-depth: 0
 
       - name: Configure Git
@@ -22,10 +35,49 @@ jobs:
           git config user.name "$GITHUB_ACTOR"
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
-      - name: Run chart-releaser
-        uses: helm/chart-releaser-action@v1.7.0
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Package Helm chart
+        shell: bash
+        run: |
+          mkdir -p "${RUNNER_TEMP}/charts_out"
+          helm package "src/charts/other/cardiac-uhn" \
+            --dependency-update \
+            --destination "${RUNNER_TEMP}/charts_out"
+
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
         with:
-          charts_dir: .
-          skip_existing: true
-        env:
-          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          path: gh-pages
+          ref: gh-pages
+
+      - name: Copy package to gh-pages structure
+        shell: bash
+        run: |
+          mkdir -p gh-pages/other
+          cp "${RUNNER_TEMP}"/charts_out/*.tgz gh-pages/other/
+
+      - name: Update Helm chart index
+        shell: bash
+        working-directory: gh-pages
+        run: |
+          helm repo index . --url https://uhn.github.io/helm-chart/
+
+      - name: Commit gh-pages changes
+        shell: bash
+        working-directory: gh-pages
+        run: |
+          git add index.yaml other/*.tgz
+          if git diff --cached --quiet; then
+            echo "No chart repository changes to commit"
+          else
+            git commit -m "Add cardiac-uhn chart package"
+            git push origin gh-pages
+          fi
+
+      - name: Deploy changes to GitHub Pages
+        uses: ./src/.github/actions/publish-folder-to-pages
+        with:
+          path: gh-pages/
+          deleteArtifactAfterPublish: true

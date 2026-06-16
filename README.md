@@ -6,7 +6,7 @@ Helm charts for the UHN Cardiac Drive team.
 
 | Chart | Description |
 | --- | --- |
-| `cardiac-uhn` | App-template based chart for Cardiac UHN applications |
+| `charts/other/cardiac-uhn` | App-template based chart for Cardiac UHN applications |
 
 ## Helm Repository
 
@@ -26,4 +26,4 @@ helm install cardiac-uhn uhn/cardiac-uhn \
   --create-namespace
 ```
 
-Chart releases are produced by `.github/workflows/release.yml` using Helm chart-releaser. The workflow publishes chart packages and `index.yaml` to the `gh-pages` branch whenever chart versions change on `main`.
+Chart releases are produced by `.github/workflows/release.yml`. The workflow packages `charts/other/cardiac-uhn`, updates the `gh-pages` branch, and deploys the generated Helm repository with GitHub Pages.
