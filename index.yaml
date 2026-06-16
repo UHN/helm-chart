@@ -5,13 +5,13 @@ entries:
       app-template.uhn.io/dhp-source: external-example/generic-dhp-application-helm
       app-template.uhn.io/source: external-example/helm-charts/charts/other/app-template
     apiVersion: v2
-    created: "2026-06-16T14:03:03.467085773Z"
+    created: "2026-06-16T14:16:13.422179572Z"
     dependencies:
     - name: common
       repository: https://bjw-s-labs.github.io/helm-charts
       version: 5.0.1
     description: App-template based Helm chart for Cardiac UHN applications
-    digest: 204834281eea31d82fbc21902b19172e9f84b5c042763d25d435c889e3a5df81
+    digest: 3623f93f4211c63b50e0d027fb9164b64e9d6859614aa3a3112653a3c9dd6017
     kubeVersion: '>=1.28.0-0'
     name: cardiac-uhn
     sources:
@@ -20,4 +20,4 @@ entries:
     urls:
     - https://uhn.github.io/helm-chart/other/cardiac-uhn-0.1.0.tgz
     version: 0.1.0
-generated: "2026-06-16T14:03:03.460511014Z"
+generated: "2026-06-16T14:16:13.415636817Z"
