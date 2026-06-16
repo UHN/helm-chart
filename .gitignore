@@ -1,0 +1,5 @@
+.cr-release-packages/
+.cr-index/
+dist/
+*.tmp
+.DS_Store
