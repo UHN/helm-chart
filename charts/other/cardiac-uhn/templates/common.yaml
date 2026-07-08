@@ -1,12 +1,6 @@
 ---
-{{- include "bjw-s.common.loader.init" . }}
-
-{{- define "app-template.hardcodedValues" -}}
-{{ if not .Values.global.nameOverride }}
-global:
-  nameOverride: "{{ .Release.Name }}"
-{{ end }}
-{{- end -}}
-{{- $_ := mergeOverwrite .Values (include "app-template.hardcodedValues" . | fromYaml) -}}
-
-{{ include "bjw-s.common.loader.generate" . }}
+# bjw-s app-template loader. Resource names derive from the release name or an
+# explicit global.nameOverride / global.fullnameOverride set by the consuming
+# app (see README). No hardcoded nameOverride here — pinning it caused every
+# release to be named "cardiac-uhn" and collide under the umbrella pattern.
+{{- include "bjw-s.common.loader.all" . }}

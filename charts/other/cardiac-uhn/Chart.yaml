@@ -1,9 +1,9 @@
 ---
 apiVersion: v2
 name: cardiac-uhn
-description: App-template based Helm chart for Cardiac UHN applications
+description: App-template based Helm chart for Cardiac UHN applications (ESO + Reloader + Gateway API)
 type: application
-version: 0.1.1
+version: 0.2.0
 kubeVersion: ">=1.28.0-0"
 dependencies:
   - name: common
@@ -13,7 +13,20 @@ sources:
   - https://github.com/bjw-s-labs/helm-charts
 annotations:
   app-template.uhn.io/source: external-example/helm-charts/charts/other/app-template
-  app-template.uhn.io/dhp-source: external-example/generic-dhp-application-helm
+  app-template.uhn.io/reference-app: repos/cardiac-stage-argo.uhn.io/apps/cohort
   artifacthub.io/changes: |-
+    - kind: changed
+      description: >-
+        Pivot to the cluster-native secret model. Replace the consul-template /
+        vault-agent in-pod rendering with External Secrets Operator
+        (ExternalSecret -> Secret -> envFrom) and Stakater Reloader.
+    - kind: changed
+      description: Expose apps via Gateway API HTTPRoute (route:) instead of Ingress.
+    - kind: removed
+      description: >-
+        Remove vault-agent/consul-template init containers, the vault-config
+        ConfigMap, and the nats/mongo/files consul-template helpers.
     - kind: fixed
-      description: Reference existing vault-auth ServiceAccount instead of creating it.
+      description: >-
+        Drop the pinned global.nameOverride default so resource names derive
+        from the release/override instead of always being "cardiac-uhn".
