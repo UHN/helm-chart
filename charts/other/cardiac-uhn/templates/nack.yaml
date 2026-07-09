@@ -1,0 +1,43 @@
+{{- if .Values.nack.enabled -}}
+{{- range .Values.nack.streams }}
+{{- $streamName := required "nack.streams[].name is required" .name -}}
+---
+# yaml-language-server: $schema=https://datreeio.github.io/CRDs-catalog/jetstream.nats.io/stream_v1beta2.json
+apiVersion: jetstream.nats.io/v1beta2
+kind: Stream
+metadata:
+  name: {{ $streamName }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "bjw-s.common.lib.metadata.allLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: nats-stream
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  name: {{ .spec.name | default $streamName | quote }}
+  {{- omit .spec "name" | toYaml | nindent 2 }}
+{{ range .consumers }}
+{{- $consumerName := required "nack.streams[].consumers[].name is required" .name }}
+---
+# yaml-language-server: $schema=https://datreeio.github.io/CRDs-catalog/jetstream.nats.io/consumer_v1beta2.json
+apiVersion: jetstream.nats.io/v1beta2
+kind: Consumer
+metadata:
+  name: {{ $consumerName }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "bjw-s.common.lib.metadata.allLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: nats-consumer
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  streamName: {{ .spec.streamName | default $streamName | quote }}
+  durableName: {{ .spec.durableName | default $consumerName | quote }}
+  {{- omit .spec "streamName" "durableName" | toYaml | nindent 2 }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -10,6 +10,10 @@ that bakes in the Cardiac team's **cluster-native** deployment conventions:
 - **Exposure:** Gateway API `HTTPRoute` to the shared `envoy` gateway in the
   `network` namespace.
 - **Image pulls:** `github-uhn-registry` (GHCR).
+- **Dynamic Vault leases:** optional `VaultDynamicSecret` generators for apps
+  that need dynamic credentials materialized through ESO.
+- **NATS topology:** optional NACK `Stream` and `Consumer` CRs so an app can
+  declare its JetStream topology beside the workload that uses it.
 - Reference implementation: `repos/cardiac-stage-argo.uhn.io/apps/cohort`.
 
 > This replaces the pre-0.2.0 vault-agent / consul-template in-pod rendering.
@@ -60,6 +64,49 @@ externalSecret:
   consul-template `files:` / `MONGO_URL` machinery.
 - Secret-less apps: set `externalSecret.enabled: false`. The container's
   `envFrom` is marked `optional`, so the pod still starts.
+
+### Dynamic Vault leases
+
+Use `vaultDynamicSecrets.items` when an app needs a Vault dynamic secret, then
+reference the generated data from `externalSecret.dataFrom`.
+
+```yaml
+vaultDynamicSecrets:
+  items:
+    - name: cohort-mongo
+      path: db/mongo.hpc4healthlocal/creds/cohort
+
+externalSecret:
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: VaultDynamicSecret
+          name: cohort-mongo
+  template:
+    engineVersion: v2
+    data:
+      MONGO_URL: "mongodb://{{ .username }}:{{ .password }}@mongo.example:27017"
+```
+
+### NACK JetStream topology
+
+Use `nack.streams` for app-owned streams and consumers. The cluster-level NACK
+operator supplies its NATS URL and credentials; this chart only renders the CRs.
+
+```yaml
+nack:
+  enabled: true
+  streams:
+    - name: wearable
+      spec:
+        subjects: [stage.wearable.>]
+        storage: file
+      consumers:
+        - name: wearable-data-consumer
+          spec:
+            filterSubject: stage.wearable.data
+```
 
 ## Validate
 

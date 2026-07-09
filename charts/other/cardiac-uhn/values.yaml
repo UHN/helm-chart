@@ -122,3 +122,34 @@ externalSecret:
   #     MONGO_URL: "mongodb://{{ .mUser }}:{{ .mPass }}@{{ .mUrl }}"
   #     config.json: |
   #       { "clientId": "{{ .epicClientId }}" }
+
+# Optional External Secrets generators for dynamic Vault leases. These are
+# referenced from `externalSecret.dataFrom[].sourceRef.generatorRef`.
+vaultDynamicSecrets:
+  defaults:
+    method: GET
+    provider:
+      server: https://vault.uhndhp.io
+      auth:
+        kubernetes:
+          mountPath: uhn-dhp-kubernetes
+          role: "" # Defaults to the release namespace.
+          secretRef: { name: vault-auth-token, key: token }
+      caProvider: { type: ConfigMap, name: uhn.ca, key: ca-certificates.crt }
+  items: []
+  # - name: mongo-creds
+  #   path: db/mongo.hpc4healthlocal/creds/my-app
+
+# Optional NACK JetStream topology. The cluster-level NACK operator supplies
+# the NATS URL and credentials; these CRs declare app-owned streams/consumers.
+nack:
+  enabled: false
+  streams: []
+  # - name: my-stream
+  #   spec:
+  #     subjects: [my.subject.>]
+  #     storage: file
+  #   consumers:
+  #     - name: my-consumer
+  #       spec:
+  #         filterSubject: my.subject.created
