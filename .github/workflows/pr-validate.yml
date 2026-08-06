@@ -48,7 +48,11 @@ jobs:
             name="$(basename "$chart")"
             echo "::group::${name}"
             yamale -s .ci/ct/chart_schema.yaml "${chart}Chart.yaml"
-            helm dependency build "$chart"
+            # `update`, not `build`: build requires every dependency repo to be
+            # registered via `helm repo add` first, which a bare runner has not
+            # done. update resolves the URL from Chart.yaml directly, and is
+            # what `helm package --dependency-update` already does below.
+            helm dependency update "$chart"
             helm lint "$chart"
             helm template "$name" "$chart" --namespace cardiac-dev
             # Every values file under examples/ is a render fixture: it must
