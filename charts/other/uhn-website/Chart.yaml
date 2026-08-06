@@ -1,0 +1,39 @@
+---
+apiVersion: v2
+name: uhn-website
+description: nginx serving a static website from a shared volume, with an optional push-to-deploy receiver sidecar
+type: application
+version: 0.1.0
+kubeVersion: ">=1.28.0-0"
+dependencies:
+  - name: common
+    repository: https://bjw-s-labs.github.io/helm-charts
+    version: 5.0.1
+sources:
+  - https://github.com/bjw-s-labs/helm-charts
+annotations:
+  uhn-website.uhn.io/pattern-source: gitlab.com/uhn/infrastructure/k8s -- helm-transplant-dash/charts/transplant-dash
+  uhn-website.uhn.io/receiver-source: https://github.com/jduhamel/HTDashboard -- tools/receiver
+  uhn-website.uhn.io/receiver-image: ghcr.io/uhn/website
+  artifacthub.io/changes: |-
+    - kind: added
+      description: >-
+        Initial release. Generalizes the transplant-dash deployment pattern:
+        stock nginx serving a static site from a shared volume, with its
+        server block mounted from a ConfigMap so the image is never rebuilt.
+    - kind: added
+      description: >-
+        Optional deploy-receiver sidecar. It mounts the same volume read-write
+        (nginx mounts it read-only), accepts an authenticated POST /__deploy of
+        a gzipped tar, and atomically flips the served `current` symlink.
+    - kind: added
+      description: >-
+        Content volume defaults to a dynamically provisioned nfs-retain claim
+        (ReadWriteMany, Retain reclaim policy) rather than the cluster default
+        block StorageClass, so a published site survives PVC deletion and can
+        scale past one replica. A hand-managed NFS export and an existingClaim
+        are both supported alternatives.
+    - kind: added
+      description: >-
+        Optional External Secrets Operator sourcing of the /__deploy basic-auth
+        credential, so the password never lands in values or git.

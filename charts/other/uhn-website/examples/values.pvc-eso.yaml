@@ -1,0 +1,38 @@
+---
+# The default shape: push-to-deploy onto the chart's dynamically provisioned
+# nfs-retain claim, with the /__deploy credential pulled from Vault by External
+# Secrets instead of created by hand. Everything storage-related is inherited
+# from the chart -- only the size is raised.
+#
+#   helm template mysite charts/other/uhn-website \
+#     --namespace cardiac-stage -f examples/values.pvc-eso.yaml
+
+global:
+  nameOverride: mysite
+  fullnameOverride: mysite
+
+controllers:
+  main:
+    containers:
+      receiver:
+        enabled: true
+
+persistence:
+  site:
+    size: 2Gi
+
+externalSecret:
+  enabled: true
+  secretStore:
+    name: cardiac-secret
+  data:
+    - secretKey: user
+      remoteRef: { key: &vk cardiac/overlays/stage/app/mysite, property: deploy_user }
+    - secretKey: pass
+      remoteRef: { key: *vk, property: deploy_pass }
+
+route:
+  main:
+    enabled: true
+    hostnames:
+      - mysite.stage.cardiac.uhn.ca

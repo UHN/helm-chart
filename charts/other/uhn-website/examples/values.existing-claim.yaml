@@ -1,0 +1,30 @@
+---
+# No receiver: something else -- a CI job, an NFS client, a sync sidecar --
+# writes the built site onto a claim that already exists. nginx serves the
+# volume root directly, so there is no `current` symlink to maintain.
+#
+#   helm template docs charts/other/uhn-website \
+#     --namespace cardiac-stage -f examples/values.existing-claim.yaml
+
+global:
+  nameOverride: docs
+  fullnameOverride: docs
+
+site:
+  # Serve mountPath itself rather than mountPath/current.
+  currentDir: ""
+
+persistence:
+  site:
+    existingClaim: docs-content
+    # Nothing is provisioned, so the chart's claim spec does not apply.
+    storageClass: null
+    accessMode: null
+    size: null
+    retain: null
+
+route:
+  main:
+    enabled: true
+    hostnames:
+      - docs.stage.cardiac.uhn.ca
