@@ -15,7 +15,7 @@ Before pushing chart changes, run — for each chart you touched:
 ```sh
 yamllint .
 yamale -s .ci/ct/chart_schema.yaml charts/other/<chart>/Chart.yaml
-helm dependency build charts/other/<chart>
+helm dependency update charts/other/<chart>
 helm lint charts/other/<chart>
 helm template <chart> charts/other/<chart> --namespace cardiac-dev
 mkdir -p /tmp/uhn-helm-chart-package/other
