@@ -7,6 +7,7 @@ Helm charts for the UHN Cardiac Drive team.
 | Chart | Description |
 | --- | --- |
 | `charts/other/cardiac-uhn` | App-template based chart for Cardiac UHN applications |
+| `charts/other/uhn-website` | Static websites — nginx serving a volume, with optional push-to-deploy |
 
 ## Helm Repository
 
@@ -26,4 +27,4 @@ helm install cardiac-uhn uhn/cardiac-uhn \
   --create-namespace
 ```
 
-Chart releases are produced by `.github/workflows/release.yml`. The workflow packages `charts/other/cardiac-uhn`, updates the `gh-pages` branch, and deploys the generated Helm repository with GitHub Pages.
+Chart releases are produced by `.github/workflows/release.yml`. The workflow packages every chart under `charts/other/`, updates the `gh-pages` branch, and deploys the generated Helm repository with GitHub Pages. Adding a chart requires no workflow change — bump its `version` in `Chart.yaml` and merge.
