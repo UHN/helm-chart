@@ -10,15 +10,22 @@ This repository publishes UHN Helm charts through GitHub Pages at `https://uhn.g
 
 ## Validation
 
-Before pushing chart changes, run:
+Before pushing chart changes, run — for each chart you touched:
 
 ```sh
-helm dependency build charts/other/cardiac-uhn
-helm lint charts/other/cardiac-uhn
-helm template cardiac-uhn charts/other/cardiac-uhn --namespace cardiac-dev
+yamllint .
+yamale -s .ci/ct/chart_schema.yaml charts/other/<chart>/Chart.yaml
+helm dependency build charts/other/<chart>
+helm lint charts/other/<chart>
+helm template <chart> charts/other/<chart> --namespace cardiac-dev
 mkdir -p /tmp/uhn-helm-chart-package/other
-helm package charts/other/cardiac-uhn --dependency-update --destination /tmp/uhn-helm-chart-package/other
+helm package charts/other/<chart> --dependency-update --destination /tmp/uhn-helm-chart-package/other
 ```
+
+A chart may ship `examples/*.yaml`. Those are render fixtures, not just
+documentation — CI renders the chart against every one of them, so keep them
+working. Render locally the same way, adding `--api-versions
+gateway.networking.k8s.io/v1/HTTPRoute` for charts that emit an `HTTPRoute`.
 
 For repository publishing checks, verify:
 

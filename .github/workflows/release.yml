@@ -34,13 +34,15 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v4
 
-      - name: Package Helm chart
+      - name: Package Helm charts
         shell: bash
         run: |
           mkdir -p "${RUNNER_TEMP}/charts_out"
-          helm package "src/charts/other/cardiac-uhn" \
-            --dependency-update \
-            --destination "${RUNNER_TEMP}/charts_out"
+          for chart in src/charts/other/*/; do
+            helm package "$chart" \
+              --dependency-update \
+              --destination "${RUNNER_TEMP}/charts_out"
+          done
 
       - name: Checkout gh-pages branch
         uses: actions/checkout@v4
@@ -70,7 +72,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No chart repository changes to commit"
           else
-            git commit -m "Add cardiac-uhn chart package"
+            git commit -m "Publish chart packages"
             git push origin gh-pages
           fi
 

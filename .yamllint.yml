@@ -5,6 +5,11 @@ ignore: |
   charts/**/templates/*.yaml
 
 rules:
+  # `brackets` covers [] only; flow mappings need `braces` configured to match,
+  # otherwise the { key: value } style already used across charts/ is an error.
+  braces:
+    max-spaces-inside: 1
+    min-spaces-inside: 0
   brackets:
     max-spaces-inside: 1
     min-spaces-inside: 0
