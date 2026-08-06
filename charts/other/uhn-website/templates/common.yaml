@@ -1,0 +1,6 @@
+---
+# bjw-s app-template loader. Everything this chart renders -- Deployment,
+# Service, ConfigMap, PVC, HTTPRoute -- comes from values.yaml through the
+# common library. Resource names derive from the release name or an explicit
+# global.nameOverride / global.fullnameOverride set by the consuming site.
+{{- include "bjw-s.common.loader.all" . }}

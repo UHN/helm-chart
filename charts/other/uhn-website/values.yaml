@@ -1,0 +1,307 @@
+---
+# yaml-language-server: $schema=values.schema.json
+#
+# uhn-website -- nginx serving a static site from a shared volume (bjw-s
+# app-template base).
+#
+# The stock nginx image is never rebuilt; its server block is mounted from the
+# ConfigMap defined below. Content lives on a volume, not in the image, so
+# publishing a new build never rolls the pod.
+#
+# Two ways to get content onto that volume:
+#   1. Push-to-deploy -- enable the receiver sidecar, then POST a gzipped tar of
+#      the built site to /__deploy. The sidecar extracts it to releases/<ts>/
+#      and atomically flips the `current` symlink nginx serves. Zero downtime,
+#      last N releases kept for rollback.
+#   2. Write to the volume yourself -- a CI job, an NFS client, a sync sidecar.
+#      Leave the receiver disabled and set site.currentDir to "" to serve the
+#      volume root directly.
+#
+# Set global.nameOverride (or fullnameOverride) to your site's name so resources
+# are named after the site, not "uhn-website". See README for the full contract.
+
+global:
+  nameOverride: ""
+  fullnameOverride: ""
+  createDefaultServiceAccount: false
+
+defaultPodOptions:
+  # The receiver image (ghcr.io/uhn/website) is org-internal, so pulling it
+  # needs credentials. namespace-helm-chart provisions this secret in every
+  # cardiac namespace. Harmless when the receiver is disabled -- nginx comes
+  # from Docker Hub and needs no auth.
+  imagePullSecrets:
+    - name: github-uhn-registry
+
+# Site-level knobs. Referenced from the nginx server block below, which is
+# rendered through `tpl` with the root context.
+site:
+  # Where the content volume is mounted, in BOTH containers.
+  mountPath: /srv/site
+  # Subdirectory of mountPath that nginx serves. The receiver maintains this as
+  # a symlink to the newest releases/<ts>/ and flips it atomically, so nginx
+  # picks up a new release without a reload. Set to "" to serve mountPath
+  # itself (content written by CI, an NFS client, or baked into an image).
+  currentDir: current
+  index: index.html
+  # nginx client_max_body_size for the /__deploy upload. Keep >= the built
+  # site's tarball size, and in step with the receiver's MAX_BYTES below.
+  maxBodySize: 250m
+  # Basic-auth credential for POST /__deploy. Must be a Secret with keys `user`
+  # and `pass`; the receiver refuses to start without both -- fail closed, by
+  # design. Defaults to the Secret that externalSecret (below) materializes.
+  # If you are not using ESO, create the Secret out-of-band and name it here:
+  #   kubectl -n <ns> create secret generic <site>-deploy-auth \
+  #     --from-literal=user=deployer --from-literal=pass='<strong-pass>'
+  deployAuthSecret: '{{ include "bjw-s.common.lib.chart.names.fullname" . }}-secret'
+  # Appended verbatim inside the server block, rendered through `tpl`. For
+  # cache headers, redirects, extra locations.
+  extraConfig: ""
+
+# The nginx server block. Mounted over the image's
+# /etc/nginx/conf.d/default.conf -- the image itself is never rebuilt.
+#
+# A change here rolls the pod: bjw-s common hashes configMaps.*.data into a
+# `checksum/configMaps` pod annotation automatically.
+configMaps:
+  nginx:
+    enabled: true
+    data:
+      default.conf: |
+        server {
+          listen 80;
+          server_name _;
+
+          # Content-independent health endpoint, so the pod goes Ready -- and
+          # /__deploy becomes reachable -- BEFORE the first upload exists.
+          location = /healthz { return 200 "ok\n"; }
+
+          # nginx resolves the symlink per request, so the receiver's atomic
+          # flip is served live with no reload.
+          root {{ .Values.site.mountPath }}{{ with .Values.site.currentDir }}/{{ . }}{{ end }};
+          index {{ .Values.site.index }};
+
+          location / {
+            try_files $uri $uri/ =404;
+          }
+        {{- if dig "main" "containers" "receiver" "enabled" false .Values.controllers }}
+
+          # Authenticated deploy endpoint -> receiver sidecar on localhost.
+          # Auth is enforced in the receiver; nginx forwards and lifts the cap.
+          location = /__deploy {
+            client_max_body_size {{ .Values.site.maxBodySize }};
+            proxy_pass http://127.0.0.1:8765;
+            proxy_request_buffering on;
+            proxy_read_timeout 300s;
+          }
+        {{- end }}
+        {{- with .Values.site.extraConfig }}
+
+          {{- tpl . $ | nindent 2 }}
+        {{- end }}
+        }
+
+controllers:
+  main:
+    type: deployment
+    replicas: 1
+    # Recreate, not RollingUpdate: a ReadWriteOnce claim cannot be attached to
+    # the old and new pods at once, and two receivers must never write to the
+    # same release tree concurrently.
+    strategy: Recreate
+    containers:
+      # Stock nginx. Reads the content volume read-only and serves `current`.
+      main:
+        image:
+          repository: nginx
+          tag: stable
+          pullPolicy: IfNotPresent
+        probes:
+          liveness:
+            enabled: true
+            custom: true
+            spec:
+              httpGet: { path: /healthz, port: 80 }
+              initialDelaySeconds: 5
+              periodSeconds: 20
+          readiness:
+            enabled: true
+            custom: true
+            spec:
+              httpGet: { path: /healthz, port: 80 }
+              initialDelaySeconds: 5
+              periodSeconds: 10
+          startup:
+            enabled: false
+        resources:
+          requests: { cpu: 50m, memory: 64Mi }
+          limits: { cpu: 100m, memory: 128Mi }
+
+      # Push-to-deploy sidecar. Mounts the SAME volume read-write, accepts the
+      # authenticated /__deploy upload, extracts it and flips `current`.
+      # Off by default -- enabling it requires site.deployAuthSecret to exist.
+      receiver:
+        enabled: false
+        image:
+          # Site-agnostic: reads only WEBROOT, KEEP, MAX_BYTES, AUTH_USER and
+          # AUTH_PASS. Source + Dockerfile live in the HTDashboard repo
+          # (tools/receiver); published here de-branded for reuse.
+          repository: ghcr.io/uhn/website
+          tag: v0.5.0
+          pullPolicy: IfNotPresent
+        securityContext:
+          # runAsUser/runAsGroup are deliberately unset: the image already runs
+          # as a non-root uid. On an NFS export with sec=sys the kernel
+          # authorizes writes by uid/gid, so you MUST override both with the
+          # uid/gid that owns the export, or every write is denied. On a PVC,
+          # set defaultPodOptions.securityContext.fsGroup instead.
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        env:
+          WEBROOT: "{{ .Values.site.mountPath }}"
+          # Releases retained under releases/ for rollback.
+          KEEP: "5"
+          # Receiver-side request body cap, in bytes (250Mi). Keep in step with
+          # site.maxBodySize, which caps the same upload at the nginx hop.
+          MAX_BYTES: "262144000"
+          AUTH_USER:
+            valueFrom:
+              secretKeyRef:
+                name: "{{ tpl .Values.site.deployAuthSecret . }}"
+                key: user
+          AUTH_PASS:
+            valueFrom:
+              secretKeyRef:
+                name: "{{ tpl .Values.site.deployAuthSecret . }}"
+                key: pass
+        probes:
+          liveness:
+            enabled: false
+          readiness:
+            enabled: true
+            custom: true
+            spec:
+              httpGet: { path: /healthz, port: 8765 }
+              initialDelaySeconds: 3
+              periodSeconds: 10
+          startup:
+            enabled: false
+        resources:
+          requests: { cpu: 10m, memory: 16Mi }
+          limits: { cpu: 100m, memory: 64Mi }
+
+persistence:
+  # The content volume: a dynamically provisioned NFS claim on `nfs-retain`.
+  #
+  # Why not the cluster default StorageClass (`fastio-geo`)? That is vSphere
+  # block storage -- ReadWriteOnce, so the site could never run more than one
+  # replica, and its reclaim policy is Delete. `nfs-retain` is ReadWriteMany
+  # (scale nginx out whenever you want) and reclaims with Retain, so the
+  # published site outlives the PVC.
+  #
+  # Two independent "don't delete my site" guards, easily confused:
+  #   retain: true       -- Helm resource-policy, keeps the PVC on `helm uninstall`
+  #   nfs-retain's       -- reclaim policy, keeps the PV+data when the PVC goes
+  #
+  # Alternatives, each replacing the block below wholesale. Overriding across
+  # shapes means nulling the keys you drop, because the values schema rejects
+  # PVC-only keys on an NFS volume and vice versa -- see
+  # examples/values.nfs-receiver.yaml.
+  #
+  #   Hand-managed NFS export (a share that already exists, outside the CSI
+  #   driver -- what the transplant dashboard uses):
+  #     type: nfs
+  #     server: uhn-cvdmc.stg.ccm.sickkids.ca
+  #     path: /ifs/H4H/uhn-cvdmc/mysite
+  #     accessMode: null
+  #     size: null
+  #     retain: null
+  #     storageClass: null
+  #
+  #   Claim you provisioned yourself:
+  #     type: persistentVolumeClaim
+  #     existingClaim: mysite-content
+  #     accessMode: null
+  #     size: null
+  site:
+    type: persistentVolumeClaim
+    storageClass: nfs-retain
+    accessMode: ReadWriteMany
+    size: 1Gi
+    retain: true
+    advancedMounts:
+      main:
+        # nginx never writes. Only the receiver does.
+        main:
+          - path: "{{ .Values.site.mountPath }}"
+            readOnly: true
+        receiver:
+          - path: "{{ .Values.site.mountPath }}"
+
+  nginx-config:
+    type: configMap
+    identifier: nginx
+    advancedMounts:
+      main:
+        main:
+          - path: /etc/nginx/conf.d/default.conf
+            subPath: default.conf
+            readOnly: true
+
+service:
+  main:
+    controller: main
+    type: ClusterIP
+    ports:
+      http:
+        port: 80
+        targetPort: 80
+
+# Gateway API HTTPRoute, pointing at the shared Envoy gateway in the network
+# namespace (the cohort convention). Disable for internal-only sites.
+route:
+  main:
+    enabled: false
+    kind: HTTPRoute
+    hostnames: []
+    #  - mysite.stage.cardiac.uhn.ca
+    parentRefs:
+      - name: envoy
+        namespace: network
+    rules:
+      - matches:
+          - path:
+              type: PathPrefix
+              value: /
+        backendRefs:
+          - identifier: main
+            port: 80
+
+# External Secrets Operator sourcing of the /__deploy credential, so the
+# password never lands in values or git. Materializes <fullname>-secret, which
+# site.deployAuthSecret points at by default. Leave disabled if you created the
+# Secret out-of-band with kubectl.
+externalSecret:
+  enabled: false
+  refreshInterval: 1h
+  creationPolicy: Owner
+  secretStore:
+    # namespace-helm-chart provisions "cardiac-secret" (kind SecretStore) in
+    # every cardiac namespace.
+    kind: SecretStore
+    name: cardiac-secret
+  # The receiver reads exactly two keys: `user` and `pass`.
+  data: []
+  #  - secretKey: user
+  #    remoteRef:
+  #      key: cardiac/overlays/stage/app/mysite
+  #      property: deploy_user
+  #  - secretKey: pass
+  #    remoteRef:
+  #      key: cardiac/overlays/stage/app/mysite
+  #      property: deploy_pass
+  dataFrom: []
+  template: {}

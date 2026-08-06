@@ -1,0 +1,52 @@
+---
+# Push-to-deploy onto an NFS export -- the transplant-dash shape, re-expressed
+# on this chart. Content is published by POSTing a gzipped tar to /__deploy.
+#
+#   helm template transplant-dash charts/other/uhn-website \
+#     --namespace cu-research -f examples/values.nfs-receiver.yaml
+
+global:
+  nameOverride: transplant-dash
+  fullnameOverride: transplant-dash
+
+site:
+  mountPath: /usr/share/nginx/html
+  # Created out-of-band so the password never lands in git:
+  #   kubectl -n cu-research create secret generic transplant-dash-deploy-auth \
+  #     --from-literal=user=deployer --from-literal=pass='<strong-pass>'
+  deployAuthSecret: transplant-dash-deploy-auth
+
+controllers:
+  main:
+    containers:
+      receiver:
+        enabled: true
+        image:
+          # Pin to a pushed git-describe tag, never :latest.
+          tag: v0.5.0
+        securityContext:
+          # The uid/gid that owns the export. NFS sec=sys authorizes writes by
+          # uid, so the receiver must run as the share owner or every write is
+          # denied. 1501:1002 is the owner on uhn-cvdmc.
+          runAsUser: 1501
+          runAsGroup: 1002
+
+persistence:
+  site:
+    # A hand-managed export that predates the cluster's CSI NFS driver, on a
+    # different server entirely. Replaces the chart's nfs-retain claim, so the
+    # PVC-only keys have to be nulled out -- the values schema rejects them on
+    # an inline nfs volume.
+    type: nfs
+    server: uhn-cvdmc.stg.ccm.sickkids.ca
+    path: /ifs/H4H/uhn-cvdmc/transplant-dash
+    storageClass: null
+    accessMode: null
+    size: null
+    retain: null
+
+route:
+  main:
+    enabled: true
+    hostnames:
+      - hf-transplant.stage.cardiac.uhn.ca
