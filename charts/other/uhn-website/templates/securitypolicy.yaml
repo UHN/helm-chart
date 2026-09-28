@@ -5,10 +5,6 @@
 {{- if not $route.enabled }}
   {{- fail "auth.enabled requires route.main.enabled: the SecurityPolicy attaches to the main HTTPRoute" }}
 {{- end }}
-{{- if not $route.hostnames }}
-  {{- fail "auth.enabled requires route.main.hostnames: the OIDC redirect URL is built from the first hostname" }}
-{{- end }}
-{{- $host := first $route.hostnames -}}
 {{- $cookie := printf "%s-access-token" $fullname -}}
 ---
 # yaml-language-server: $schema=https://raw.githubusercontent.com/datreeio/CRDs-catalog/refs/heads/main/gateway.envoyproxy.io/securitypolicy_v1alpha1.json
@@ -41,7 +37,13 @@ spec:
     clientSecret:
       # Envoy Gateway reads the key `client-secret` from this Secret.
       name: {{ tpl $auth.clientSecretRef . | quote }}
-    redirectURL: {{ printf "https://%s%s" $host $auth.callbackPath | quote }}
+    # Per-request, not pinned to one hostname: the session cookies are scoped to
+    # the host that started the flow, so the callback has to land on that same
+    # host or the CSRF check fails. Envoy Gateway accepts these formatters here
+    # (they are its own default with a configurable path). Every
+    # https://<hostname><callbackPath> on the route must be a registered
+    # redirect URI at the provider.
+    redirectURL: {{ printf "%%REQ(x-forwarded-proto)%%://%%REQ(:authority)%%%s" $auth.callbackPath | quote }}
     logoutPath: {{ $auth.logoutPath | quote }}
     {{- with $auth.scopes }}
     scopes:
@@ -100,8 +102,10 @@ metadata:
 spec:
   parentRefs:
     {{- toYaml $route.parentRefs | nindent 4 }}
+  {{- with $route.hostnames }}
   hostnames:
-    {{- toYaml $route.hostnames | nindent 4 }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   rules:
     - matches:
         - path:

@@ -120,7 +120,7 @@ enforcement point.
 | `auth.clientID` | `""` | The client registered with that provider |
 | `auth.clientSecretRef` | `<fullname>-secret` | Secret carrying the client secret under key **`client-secret`**. Rendered through `tpl` |
 | `auth.scopes` | `[openid, profile, email]` | Requested scopes |
-| `auth.callbackPath` | `/oauth2/callback` | Appended to the first `route.main.hostnames` entry to build `redirectURL` |
+| `auth.callbackPath` | `/oauth2/callback` | Where Envoy serves the callback, on whichever hostname started the flow (sessions are per-host). Register `https://<hostname><callbackPath>` for **every** `route.main.hostnames` entry as a valid redirect URI at the provider |
 | `auth.logoutPath` | `/logout` | Clears the session cookies |
 | `auth.groups` | `[]` | Allowed groups. Empty means any authenticated user |
 | `auth.groupsClaim` | `groups` | Claim carrying them |

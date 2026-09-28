@@ -21,7 +21,8 @@ annotations:
         Optional OIDC in front of the site, enforced by the gateway rather than
         by nginx or a sidecar. Renders an Envoy Gateway SecurityPolicy attached
         to the main HTTPRoute: Envoy runs the authorization-code flow, sets an
-        encrypted session cookie, and only then forwards to nginx. The pod is
+        encrypted session cookie, and only then forwards to nginx. The redirect
+        URL is per-request, so routes with several hostnames work. The pod is
         unchanged.
     - kind: added
       description: >-
