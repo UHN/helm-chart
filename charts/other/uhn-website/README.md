@@ -71,7 +71,7 @@ kind: Kustomization
 helmCharts:
   - name: uhn-website
     repo: https://uhn.github.io/helm-chart
-    version: 0.1.0
+    version: 0.2.0
     releaseName: mysite
     namespace: cardiac-stage
     valuesFile: values.yaml
@@ -99,6 +99,73 @@ Three worked examples ship with the chart, and CI renders every one of them:
 | `site.maxBodySize` | `250m` | nginx `client_max_body_size` for `/__deploy` |
 | `site.deployAuthSecret` | `<fullname>-secret` | Secret holding keys `user` and `pass`. Rendered through `tpl` |
 | `site.extraConfig` | `""` | Appended verbatim inside the server block, rendered through `tpl` |
+
+## The `auth` block — OIDC in front of the site
+
+`auth.enabled: true` puts the site behind an OIDC login. The check runs **at the
+gateway**, not in nginx and not in a sidecar: the chart renders an Envoy Gateway
+`SecurityPolicy` attached to the main `HTTPRoute`, and Envoy runs the
+authorization-code flow, sets an encrypted session cookie, and only then
+forwards to nginx. The pod spec, the probes and the receiver are all unchanged.
+
+That is the only place this can live. cohort and weareader validate CVDMC JWTs
+in-process because they are applications; nginx serving a directory has nowhere
+to put that logic. Same issuer, same Vault-sourced client credential, different
+enforcement point.
+
+| Value | Default | Meaning |
+|---|---|---|
+| `auth.enabled` | `false` | Renders the `SecurityPolicy`. Requires `route.main.enabled` |
+| `auth.issuer` | `""` | OIDC issuer. e.g. `https://oa.uhnresearch.ca/auth/realms/CVDMC` (cohort's realm), or `https://fs.uhn.ca/adfs` (ArgoCD's and Grafana's) |
+| `auth.clientID` | `""` | The client registered with that provider |
+| `auth.clientSecretRef` | `<fullname>-secret` | Secret carrying the client secret under key **`client-secret`**. Rendered through `tpl` |
+| `auth.scopes` | `[openid, profile, email]` | Requested scopes |
+| `auth.callbackPath` | `/oauth2/callback` | Where Envoy serves the callback, on whichever hostname started the flow (sessions are per-host). Register `https://<hostname><callbackPath>` for **every** `route.main.hostnames` entry as a valid redirect URI at the provider |
+| `auth.logoutPath` | `/logout` | Clears the session cookies |
+| `auth.groups` | `[]` | Allowed groups. Empty means any authenticated user |
+| `auth.groupsClaim` | `groups` | Claim carrying them |
+| `auth.jwksURI` | `""` | Required when `auth.groups` is set. Not discovered — given explicitly, the way cohort sets `COHORT_JWKS_URL` |
+
+`auth.groups` is cohort's `COHORT_GROUP` model expressed as policy. Setting it
+pins the session cookie name, validates the access token in that cookie as a JWT
+against `jwksURI`, and switches the policy to `defaultAction: Deny` with a single
+`Allow` rule on the group claim. Leave it empty and a valid session is enough.
+
+Every one of these is a `fail` at render time rather than a broken deploy:
+`auth.enabled` without `route.main.enabled` or without a hostname, a missing
+`issuer` or `clientID`, or `auth.groups` without `jwksURI`.
+
+### `/__deploy` is carved out
+
+CI authenticates to the receiver with basic auth and cannot follow a browser
+redirect. So when `auth` and the receiver are both enabled the chart emits a
+**second** `HTTPRoute`, `<fullname>-deploy`, matching `Exact: /__deploy` with no
+policy attached. Gateway API resolves matches rather than routes, and an exact
+match outranks the main route's `PathPrefix: /`, so `/__deploy` is served by the
+unattached route. That half is spec. The half that carries the carve-out is that
+Envoy Gateway scopes a route-targeted `SecurityPolicy` to the route entries
+generated from *that* `HTTPRoute` — **confirm it on first deploy**:
+
+```sh
+curl -sI -u "$USER:$PASS" https://<site-host>/__deploy   # must not 302 to the provider
+```
+
+`/healthz` needs no carve-out: probes hit the pod directly and never traverse the
+gateway.
+
+### Prerequisites
+
+1. **A confidential client at the provider**, with redirect URI
+   `https://<site-host>/oauth2/callback` and — if you set `auth.groups` — a
+   mapper putting the group claim on the **access** token.
+2. **The client secret under the key `client-secret`.** That key name is Envoy
+   Gateway's. `auth.clientSecretRef` defaults to the same `<fullname>-secret`
+   the `/__deploy` credential lives in, so one `ExternalSecret` covers both —
+   add a third entry beside `user` and `pass`.
+3. **The `gateway.envoyproxy.io` CRDs**, which ship with the Envoy Gateway
+   install in the `network` namespace. `SecurityPolicy` is namespace-scoped and
+   attaches to your own `HTTPRoute`, so this stays a workload-repo change — no
+   managed-infra PR.
 
 ## Storage
 

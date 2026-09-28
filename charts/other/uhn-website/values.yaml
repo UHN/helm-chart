@@ -280,6 +280,42 @@ route:
           - identifier: main
             port: 80
 
+# OIDC in front of the site, enforced by the gateway -- not by nginx and not by
+# a sidecar. Renders an Envoy Gateway SecurityPolicy attached to the HTTPRoute
+# above: Envoy runs the authorization-code flow, sets an encrypted session
+# cookie, and only then forwards to nginx. The pod is untouched.
+#
+# Requires route.main.enabled -- the policy attaches to that route, and the
+# callback/logout paths are served on its hostname.
+#
+# When the receiver is enabled, this also emits a SECOND HTTPRoute matching
+# `Exact: /__deploy` with no policy on it. CI pushes with basic auth and cannot
+# follow an OIDC redirect; an Exact match outranks the main route's PathPrefix
+# "/", so the deploy hop stays on the receiver's own credential.
+auth:
+  enabled: false
+  # e.g. https://oa.uhnresearch.ca/auth/realms/CVDMC (cohort's realm) or
+  # https://fs.uhn.ca/adfs (what ArgoCD and Grafana use).
+  issuer: ""
+  clientID: ""
+  # Secret carrying the OIDC client secret under the key `client-secret` --
+  # that key name is Envoy Gateway's, not ours. Defaults to the same
+  # <fullname>-secret the /__deploy credential lives in, so one ExternalSecret
+  # covers both.
+  clientSecretRef: '{{ include "bjw-s.common.lib.chart.names.fullname" . }}-secret'
+  scopes: [openid, profile, email]
+  callbackPath: /oauth2/callback
+  logoutPath: /logout
+  # Restrict to members of these groups -- the same model as cohort's
+  # COHORT_GROUP. Empty means any authenticated user is allowed. Non-empty
+  # additionally validates the access token as a JWT, so jwksURI is required.
+  groups: []
+  groupsClaim: groups
+  # e.g. <issuer>/protocol/openid-connect/certs on Keycloak. Not discovered:
+  # Envoy Gateway's JWT provider takes the JWKS URI explicitly, the way cohort
+  # sets COHORT_JWKS_URL.
+  jwksURI: ""
+
 # External Secrets Operator sourcing of the /__deploy credential, so the
 # password never lands in values or git. Materializes <fullname>-secret, which
 # site.deployAuthSecret points at by default. Leave disabled if you created the
@@ -293,7 +329,8 @@ externalSecret:
     # every cardiac namespace.
     kind: SecretStore
     name: cardiac-secret
-  # The receiver reads exactly two keys: `user` and `pass`.
+  # The receiver reads exactly two keys: `user` and `pass`. With auth.enabled
+  # add a third, `client-secret`, which the SecurityPolicy reads by that name.
   data: []
   #  - secretKey: user
   #    remoteRef:
