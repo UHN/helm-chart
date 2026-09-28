@@ -1,0 +1,116 @@
+{{- if .Values.auth.enabled -}}
+{{- $auth := .Values.auth -}}
+{{- $fullname := include "bjw-s.common.lib.chart.names.fullname" . -}}
+{{- $route := .Values.route.main -}}
+{{- if not $route.enabled }}
+  {{- fail "auth.enabled requires route.main.enabled: the SecurityPolicy attaches to the main HTTPRoute" }}
+{{- end }}
+{{- if not $route.hostnames }}
+  {{- fail "auth.enabled requires route.main.hostnames: the OIDC redirect URL is built from the first hostname" }}
+{{- end }}
+{{- $host := first $route.hostnames -}}
+{{- $cookie := printf "%s-access-token" $fullname -}}
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/datreeio/CRDs-catalog/refs/heads/main/gateway.envoyproxy.io/securitypolicy_v1alpha1.json
+# Envoy Gateway runs the OIDC authorization-code flow for this site. A request
+# without a session is redirected to the provider; the callback lands back on
+# callbackPath, which the main HTTPRoute already matches under "/", and Envoy
+# short-circuits it before the request ever reaches nginx.
+#
+# The gateway itself lives in the network namespace and is owned by
+# managed-infra, but a SecurityPolicy is namespace-scoped and attaches to OUR
+# HTTPRoute -- so this stays a workload-repo change.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bjw-s.common.lib.metadata.allLabels" . | nindent 4 }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      # The main route only. The /__deploy route below is deliberately left
+      # unattached.
+      name: {{ $fullname }}
+  oidc:
+    provider:
+      issuer: {{ required "auth.issuer is required when auth.enabled" $auth.issuer | quote }}
+    clientID: {{ required "auth.clientID is required when auth.enabled" $auth.clientID | quote }}
+    clientSecret:
+      # Envoy Gateway reads the key `client-secret` from this Secret.
+      name: {{ tpl $auth.clientSecretRef . | quote }}
+    redirectURL: {{ printf "https://%s%s" $host $auth.callbackPath | quote }}
+    logoutPath: {{ $auth.logoutPath | quote }}
+    {{- with $auth.scopes }}
+    scopes:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- if $auth.groups }}
+    # Pin the session cookie name so the JWT provider below can read the access
+    # token back out of it. Without a fixed name Envoy generates a random one.
+    cookieNames:
+      accessToken: {{ $cookie | quote }}
+    {{- end }}
+  {{- if $auth.groups }}
+  # Group restriction, the cohort COHORT_GROUP model expressed as policy: the
+  # access token minted by the flow above is validated as a JWT, and the
+  # request is denied unless the group claim carries one of these values.
+  jwt:
+    providers:
+      - name: oidc
+        issuer: {{ $auth.issuer | quote }}
+        remoteJWKS:
+          uri: {{ required "auth.jwksURI is required when auth.groups is set" $auth.jwksURI | quote }}
+        extractFrom:
+          cookies:
+            - {{ $cookie | quote }}
+  authorization:
+    defaultAction: Deny
+    rules:
+      - name: allow-groups
+        action: Allow
+        principal:
+          jwt:
+            provider: oidc
+            claims:
+              - name: {{ $auth.groupsClaim | quote }}
+                valueType: StringArray
+                values:
+                  {{- toYaml $auth.groups | nindent 18 }}
+  {{- end }}
+{{- if dig "main" "containers" "receiver" "enabled" false .Values.controllers }}
+---
+# yaml-language-server: $schema=https://datreeio.github.io/CRDs-catalog/gateway.networking.k8s.io/httproute_v1.json
+# The push-to-deploy hop, carved out of the policy above. CI authenticates to
+# the receiver with basic auth and cannot follow a browser redirect, so
+# /__deploy must not be an OIDC-protected path.
+#
+# Gateway API resolves matches, not routes: an Exact match outranks the main
+# route's PathPrefix "/", so this route wins for /__deploy and the policy
+# attached to the main route never applies to it.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $fullname }}-deploy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bjw-s.common.lib.metadata.allLabels" . | nindent 4 }}
+spec:
+  parentRefs:
+    {{- toYaml $route.parentRefs | nindent 4 }}
+  hostnames:
+    {{- toYaml $route.hostnames | nindent 4 }}
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /__deploy
+      backendRefs:
+        - kind: Service
+          name: {{ $fullname }}
+          namespace: {{ .Release.Namespace }}
+          port: {{ .Values.service.main.ports.http.port }}
+{{- end }}
+{{- end }}
